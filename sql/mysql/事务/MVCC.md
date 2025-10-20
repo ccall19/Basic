@@ -29,3 +29,40 @@ MVCC 通过创建数据的多个版本和使用快照读取来实现并发控制
 
 # 三、INNDB 对 MVCC 的实现
 **隐藏字段、Read View、undo log**
+在内部实现中，InnoDB 通过数据行的 DB_TRX_ID 和 Read View 来判断数据的可见性，如不可见，则通过数据行的 DB_ROLL_PTR 找到 undo log 中的历史版本。每个事务读到的数据版本可能是不一样的，在同一个事务中，用户只能看到该事务创建 Read View 之前已经提交的修改和该事务本身做的修改
+## 隐藏字段
+- DB_TRX_ID（6字节）Database Transaction ID：表示最后一次插入或更新该行的事务 id。  
+此外，delete 操作在内部被视为更新，只不过会在记录头 Record header 中的 deleted_flag 字段将其标记为已删除
+- DB_ROLL_PTR（7字节）Database Rollback Pointer： 回滚指针，指向该行的 undo log 。如果该行未被更新，则为空
+- DB_ROW_ID（6字节）Database Row ID：如果没有设置主键且该表没有唯一非空索引时，InnoDB 会使用该 id 来生成聚簇索引
+
+## Read View
+Read View 是数据库为一次一致性读构建的“快照元数据”，记录在该读发生时哪些事务是活跃的，用于判定哪些行版本对这次读可见。
+````c
+class ReadView {
+  /* ... */
+    private:
+    trx_id_t m_low_limit_id;      /* 大于等于这个 ID 的事务均不可见 */
+
+    trx_id_t m_up_limit_id;       /* 小于这个 ID 的事务均可见 */
+
+    trx_id_t m_creator_trx_id;    /* 创建该 Read View 的事务ID */
+
+    trx_id_t m_low_limit_no;      /* 事务 Number, 小于该 Number 的 Undo Logs 均可以被 Purge */
+
+    ids_t m_ids;                  /* 创建 Read View 时的活跃事务列表 */
+
+    m_closed;                     /* 标记 Read View 是否 close */
+}
+````
+![alt text](image-2.png)
+
+## undo log
+两个作用：
+- 事务回滚时用于将数据恢复到修改前的样子
+- 另一个作用是 MVCC ，当读取记录时，若该记录被其他事务占用或当前版本对该事务不可见，则可以通过 undo log 读取之前的版本数据，以此实现 （非锁定读）
+共有两种：
+- insert undo log：插入记录只对自身事务可见，因此可在事务提交后直接删除，无需purge操作。
+- update undo log：update 或 delete 操作中产生的 undo log。该 undo log可能需要提供 MVCC 机制，因此不能在事务提交时就进行删除。提交时放入 undo log 链表，等待 purge线程 进行最后的删除。
+
+#
