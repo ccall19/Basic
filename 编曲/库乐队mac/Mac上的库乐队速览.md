@@ -1,0 +1,10 @@
+- [库乐队窗口](https://support.apple.com/zh-cn/guide/garageband/gbnd7f48d68b/mac)
+- [轨道区域](https://support.apple.com/zh-cn/guide/garageband/gbndd5d532f6/mac)
+- 资源库
+- 智能控制
+- 音频编辑器
+- 钢琴卷帘编辑器
+- 乐谱编辑器
+- 鼓手编辑器
+- 注释板
+- 乐段浏览器
